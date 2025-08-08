@@ -1,14 +1,17 @@
-# Crazybot — Stock Market Summary Bot (Google ADK + yfinance)
+# Company Research Agent (Google ADK)
 
-A minimal AI agent built with Google ADK that summarizes stocks and market indices using yfinance, with a custom DuckDuckGo web search tool and an optional FastAPI server exposing CORS-enabled endpoints.
+A minimal AI agent built with Google ADK that performs deep company research from open-web sources and returns a JSON-only report. It uses DuckDuckGo search and light page fetching/parsing, plus optional yfinance enrichment if the company is public.
 
 ## Features
 
-- Stock snapshot: price, day change, recent-period return, 52w range, market cap, volumes
-- Market overview: S&P 500, Nasdaq, Dow (configurable)
-- Company headlines: recent news for a ticker
-- Web search: DuckDuckGo-powered `web_search` for supporting links/context
-- CORS-enabled API via `server.py`
+- Overview: website, industry, HQ, founding year, links (best-effort)
+- Founders/Leadership: key names from public pages
+- Competitors: related companies via public sources
+- Funding summary: total and last-round signals from press/Wikipedia (approximate)
+- Web traffic summary: public signals (e.g., Similarweb mentions) with citations (approximate)
+- News: recent headlines via DuckDuckGo News
+- Optional enrichment: detect ticker and fetch market cap/revenue via yfinance
+- JSON-only output with per-section sources
 
 ## Requirements
 
@@ -70,23 +73,36 @@ curl -s -X POST http://localhost:8080/run_sse \
     "session_id": "s1",
     "new_message": {
       "role": "user",
-      "parts": [{"text": "Summarize AAPL today and for 1mo."}]
+      "parts": [{"text": "Tesla"}]
     },
     "streaming": false
   }'
 ```
 
+## Input and output
+
+- Input: company name string. Optionally include a country for disambiguation (e.g., "Acme Corp, country: USA").
+- Output: a single JSON object only (no Markdown/prose) containing:
+  - company overview, founders/leadership, competitors, funding summary, web traffic summary, news, and per-section sources.
+
 ## Tools available
 
-- `get_stock_summary(ticker, period="1mo", interval="1d")`
-- `get_market_overview(indexes="^GSPC,^IXIC,^DJI")`
-- `get_company_news(ticker, limit=5)`
 - `web_search(query, max_results=5, region="wt-wt", safesearch="moderate", timelimit="")`
+- `news_search(query, max_results=5, region="wt-wt", safesearch="moderate", timelimit="")`
+- `fetch_url(url, max_chars=12000, timeout=12)`
+- `detect_ticker(company, country="")`
+- `get_company_overview(company, country="")`
+- `get_company_leadership(company, country="", max_people=10)`
+- `get_company_competitors(company, country="", max_competitors=10)`
+- `get_company_funding_summary(company, country="", max_sources=6)`
+- `get_web_traffic_summary(company, website="")`
+- `get_public_financials(ticker)`
 
 Notes:
 
 - Use empty string for `timelimit` if no limit (or `d|w|m|y`).
 - The agent model is `gemini-2.0-flash` (set `GOOGLE_API_KEY`).
+- All data is best-effort from public sources; funding and traffic figures are approximate unless cited from authoritative sources.
 
 ## Alternate: ADK built-in API server (no custom CORS)
 
@@ -99,15 +115,16 @@ For strict CORS control, prefer `python server.py` which sets `allow_origins`.
 ## Project layout
 
 ```
-agent/
-  __init__.py
-  agent.py        # tools + root_agent
+  agent/
+    __init__.py
+    agent.py        # tools + root_agent
+    tools/          # modular tools: search, profiles, funding, traffic, financials
 server.py          # FastAPI app with CORS via get_fast_api_app
 venv/              # local virtual env (optional)
 ```
 
 ## Troubleshooting
 
-- Automatic function calling prefers simple parameter types; this repo keeps tool signatures simple (no unions).
+- Automatic function calling prefers simple parameter types; this repo keeps tool signatures simple (strings/ints, no unions).
 - If CORS fails, confirm `ALLOWED_ORIGINS` and that you’re running `server.py` (not plain `adk api_server`).
 - Ensure `GOOGLE_API_KEY` is set and valid for Gemini.
